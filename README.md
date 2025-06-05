@@ -12,5 +12,6 @@
     npm init -y;
     npm install express cors body-parser;
 
-# 5. Uruchom serwer deweloperski Expo
+# 5. Uruchom serwer deweloperski Expo oraz Backend
+    node server.js
     npx expo start

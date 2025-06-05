@@ -9,13 +9,28 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "body-parser": "^2.2.0",
+    "cors": "^2.8.5",
     "expo": "~53.0.9",
     "expo-status-bar": "~2.2.3",
+    "express": "^5.1.0",
     "react": "19.0.0",
     "react-native": "0.79.2"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0"
   },
-  "private": true
+  "private": true,
+  "description": "git clone https://github.com/KarmanWZK/TestyNS.git",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KarmanWZK/TestyNS.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/KarmanWZK/TestyNS/issues"
+  },
+  "homepage": "https://github.com/KarmanWZK/TestyNS#readme"
 }
