@@ -1,14 +1,14 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, TouchableOpacity, Alert } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useState } from 'react';
 
 export default function App() {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  const [isSummaryVisible, setIsSummaryVisible] = useState(false);
 
-  // Zmień URL na swój adres API Laravel
-  const API_BASE_URL = 'http://your-laravel-api.com/api';
+  const API_BASE_URL = 'http://192.168.1.103:3000'; // Ensure this matches your server's IP and port
 
   const questions = [
     {
@@ -28,53 +28,58 @@ export default function App() {
     }
   ];
 
-  const handleDotPress = (index) => {
-    setCurrentQuestion(index);
-  };
-
   const checkAnswer = async (questionId, selectedAnswer) => {
     setIsLoading(true);
-    
+
     try {
-      // Wysyłaj tylko question_id, nie answer
-      const response = await fetch(`${API_BASE_URL}/get-correct-answer`, {
+      const response = await fetch(`${API_BASE_URL}/api/get-correct-answer`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: JSON.stringify({
-          question_id: questionId
-        })
+        body: JSON.stringify({ question_id: questionId })
       });
 
-      const data = await response.json();
-      
-      if (response.ok) {
-        // PORÓWNAJ W REACT NATIVE
-        const isCorrect = data.correct_answer === selectedAnswer;
-        
-        // Zapisz odpowiedź
-        setSelectedAnswers(prev => ({
-          ...prev,
-          [questionId]: {
-            answer: selectedAnswer,
-            isCorrect: isCorrect
-          }
-        }));
-
-        // Pokaż wynik
-        Alert.alert(
-          isCorrect ? 'Poprawna odpowiedź!' : 'Niepoprawna odpowiedź',
-          isCorrect ? 'Brawo!' : `Poprawna odpowiedź to: ${data.correct_answer}`,
-          [{ text: 'OK' }]
-        );
-      } else {
-        Alert.alert('Błąd', 'Nie udało się pobrać poprawnej odpowiedzi');
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
       }
+
+      const data = await response.json();
+
+      if (!data.correct_answer) {
+        throw new Error('Nieprawidłowa odpowiedź serwera.');
+      }
+
+      const isCorrect = data.correct_answer === selectedAnswer;
+
+      setSelectedAnswers(prev => ({
+        ...prev,
+        [questionId]: {
+          answer: selectedAnswer,
+          isCorrect
+        }
+      }));
+
+      Alert.alert(
+        isCorrect ? 'Poprawna odpowiedź!' : 'Niepoprawna odpowiedź',
+        isCorrect ? 'Brawo!' : `Poprawna odpowiedź to: ${data.correct_answer}`,
+        [
+          {
+            text: 'Dalej',
+            onPress: () => {
+              if (currentQuestion < questions.length - 1) {
+                setCurrentQuestion(prev => prev + 1);
+              } else {
+                setIsSummaryVisible(true);
+              }
+            }
+          }
+        ]
+      );
     } catch (error) {
-      console.error('Error checking answer:', error);
-      Alert.alert('Błąd', 'Problemy z połączeniem z serwerem');
+      console.error('Błąd:', error);
+      Alert.alert('Błąd', 'Nie udało się sprawdzić odpowiedzi. Sprawdź połączenie z serwerem.');
     } finally {
       setIsLoading(false);
     }
@@ -85,31 +90,59 @@ export default function App() {
     checkAnswer(questionId, answer);
   };
 
+  const handleDotPress = (index) => {
+    setCurrentQuestion(index);
+  };
+
+  const resetApp = () => {
+    setCurrentQuestion(0);
+    setSelectedAnswers({});
+    setIsSummaryVisible(false);
+  };
+
+  const calculateScore = () => {
+    return Object.values(selectedAnswers).filter(answer => answer.isCorrect).length;
+  };
+
+  if (isSummaryVisible) {
+    const score = calculateScore();
+    return (
+      <View style={styles.container}>
+        <StatusBar style="auto" />
+        <View style={styles.header}>
+          <Text style={styles.title}>Podsumowanie</Text>
+        </View>
+        <View style={styles.summaryContainer}>
+          <Text style={styles.summaryText}>Twój wynik: {score} / {questions.length}</Text>
+          <TouchableOpacity style={styles.resetButton} onPress={resetApp}>
+            <Text style={styles.resetButtonText}>Zresetuj Quiz</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  const question = questions[currentQuestion];
+  const selectedAnswer = selectedAnswers[question.id];
+
   return (
     <View style={styles.container}>
       <StatusBar style="auto" />
-      
-      {/* Header */}
+
       <View style={styles.header}>
         <Text style={styles.title}>Quiz App</Text>
         <Text style={styles.subtitle}>Pytanie {currentQuestion + 1} z {questions.length}</Text>
       </View>
 
-      {/* Question */}
       <View style={styles.questionContainer}>
-        <Text style={styles.questionText}>
-          {questions[currentQuestion].question}
-        </Text>
-        
-        {/* Answer Options */}
+        <Text style={styles.questionText}>{question.question}</Text>
+
         <View style={styles.optionsContainer}>
-          {questions[currentQuestion].options.map((option, index) => {
-            const questionId = questions[currentQuestion].id;
-            const selectedAnswer = selectedAnswers[questionId];
-            const isSelected = selectedAnswer && selectedAnswer.answer === option;
-            const isCorrect = selectedAnswer && selectedAnswer.isCorrect;
-            const isIncorrect = selectedAnswer && !selectedAnswer.isCorrect && isSelected;
-            
+          {question.options.map((option, index) => {
+            const isSelected = selectedAnswer?.answer === option;
+            const isCorrect = selectedAnswer?.isCorrect;
+            const isIncorrect = isSelected && !isCorrect;
+
             return (
               <TouchableOpacity
                 key={index}
@@ -117,10 +150,10 @@ export default function App() {
                   styles.optionButton,
                   isSelected && isCorrect && styles.correctOption,
                   isIncorrect && styles.incorrectOption,
-                  isLoading && styles.disabledOption
+                  (isLoading || !!selectedAnswer) && styles.disabledOption
                 ]}
                 onPress={() => handleAnswerPress(option)}
-                disabled={isLoading || selectedAnswer}
+                disabled={isLoading || !!selectedAnswer}
               >
                 <Text style={[
                   styles.optionText,
@@ -135,7 +168,6 @@ export default function App() {
         </View>
       </View>
 
-      {/* Navigation Dots */}
       <View style={styles.dotsContainer}>
         {questions.map((_, index) => (
           <TouchableOpacity
@@ -149,8 +181,10 @@ export default function App() {
         ))}
       </View>
 
+      {isLoading && <ActivityIndicator size="large" color="#007AFF" style={{ marginBottom: 20 }} />}
+
       <Text style={styles.instruction}>
-        {isLoading ? 'Sprawdzanie odpowiedzi...' : 'Kliknij na odpowiedź lub kropkę aby przejść do pytania'}
+        {isLoading ? 'Sprawdzanie odpowiedzi...' : 'Kliknij odpowiedź lub przejdź do innego pytania'}
       </Text>
     </View>
   );
@@ -199,10 +233,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e0e0e0',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 3,
@@ -211,25 +242,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
     textAlign: 'center',
-  },
-  dotsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 15,
-    marginBottom: 10,
-  },
-  dot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  activeDot: {
-    backgroundColor: '#007AFF',
-    transform: [{ scale: 1.2 }],
-  },
-  inactiveDot: {
-    backgroundColor: '#ccc',
   },
   correctOption: {
     backgroundColor: '#4CAF50',
@@ -250,10 +262,56 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
   },
+  dotsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 15,
+    marginBottom: 10,
+  },
+  dot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  activeDot: {
+    backgroundColor: '#007AFF',
+    transform: [{ scale: 1.2 }],
+  },
+  inactiveDot: {
+    backgroundColor: '#ccc',
+  },
   instruction: {
     textAlign: 'center',
     fontSize: 14,
     color: '#666',
     marginBottom: 30,
+  },
+  summaryContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  summaryText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 20,
+  },
+  resetButton: {
+    backgroundColor: '#007AFF',
+    padding: 15,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  resetButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
 });
